@@ -10,14 +10,8 @@ using Ticket.Data;
 
 namespace Ticket.Adapter.NetCord;
 
-// The Discord side of IT tickets: /it, its modal, and the buttons on the card.
-// Discord things become plain data before entering the world (mentions, not User
-// objects); the world's TicketView becomes the card. DM delivery lives here too:
-// the adapter is the screen, and it knows which snowflake a mention belongs to.
 public static class ItTicketCommands
 {
-    // The Discord-facing priority enum: choice names are what users see.
-    // Ticket.Data's TicketPriority is the plain one the world speaks.
     public enum PriorityOption
     {
         [SlashCommandChoice(Name = "auto")] Auto,
@@ -46,7 +40,6 @@ public static class ItTicketCommands
         host.AddComponentInteraction<ButtonInteractionContext>("itreopen",
             (ButtonInteractionContext c, string ticketId) => HandleReopenAsync(world, c, ticketId));
 
-        // Add note — small modal, appends to the log + ticket JSON
         host.AddComponentInteraction<ButtonInteractionContext>("itnote",
             (ButtonInteractionContext c, string ticketId) =>
             InteractionCallback.Modal(new ModalProperties($"notemodal:{ticketId}", $"Note on ticket {ticketId}")
@@ -57,7 +50,6 @@ public static class ItTicketCommands
         host.AddComponentInteraction<ModalInteractionContext>("notemodal",
             (ModalInteractionContext c, string ticketId) => HandleNoteAsync(world, c, ticketId));
 
-        // Report button — opens a confidential complaint form
         host.AddComponentInteraction<ButtonInteractionContext>("itreport",
             (ButtonInteractionContext c, string ticketId) =>
             InteractionCallback.Modal(new ModalProperties($"reportmodal:{ticketId}", "Confidential Report")
@@ -74,14 +66,12 @@ public static class ItTicketCommands
             (ModalInteractionContext c, string ticketId) => HandleReportAsync(world, c, ticketId));
     }
 
-    // /it — bare → modal form; any option → instant ticket.
     public static Task<InteractionCallbackProperties> HandleItAsync(
         IWorldClient world, ApplicationCommandContext c,
         string? title, string? description, PriorityOption? priority, Attachment? attachment, User? assignee)
     {
         if (title is not null || description is not null || priority is not null || attachment is not null || assignee is not null)
         {
-            // Respond within 3s, finish the DM work in the background
             var mapped = priority is null ? TicketPriority.Auto : Map(priority.Value);
             _ = Task.Run(() => CreateAsync(world, c.User, c.Client.Rest, c.Interaction,
                 title, description, mapped, attachment?.Url, assignee?.Id));
@@ -126,16 +116,12 @@ public static class ItTicketCommands
         return InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
     }
 
-    // The world answers with the finished ticket (classification included); then we
-    // deliver it: DM the requester (fallback: ephemeral followup with the full
-    // card), then DM the assignee a working copy.
     public static async Task CreateAsync(
         IWorldClient world, User requester, RestClient rest, Interaction interaction,
         string? title, string? description, TicketPriority priority, string? attachmentUrl, ulong? assigneeId)
     {
         var assignee = assigneeId ?? ItUserFromEnvironment();
 
-        // The followup token lives 15 minutes; classification retries can take a while.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var ticket = await world.AskAsync<TicketCreate, TicketCreated>(new TicketCreate
         {
@@ -163,7 +149,6 @@ public static class ItTicketCommands
         }
         catch
         {
-            // DMs closed — fall back to an ephemeral followup with the full card
             await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
                 new InteractionMessageProperties
                 {
@@ -171,7 +156,6 @@ public static class ItTicketCommands
                 });
         }
 
-        // Notify the assignee — they get a working copy of the card in their DMs
         if (assignee is not null && assignee != requester.Id)
         {
             try
@@ -191,7 +175,6 @@ public static class ItTicketCommands
         }
     }
 
-    // Status buttons — customId: itstatus:<Status>:<ticketId> (no dashes — they're param separators!)
     public static async Task<InteractionCallbackProperties> HandleStatusAsync(
         IWorldClient world, ButtonInteractionContext c, string status, string ticketId)
     {
@@ -207,7 +190,6 @@ public static class ItTicketCommands
         });
     }
 
-    // Reopen — back to the full status row, timer keeps counting from creation
     public static async Task<InteractionCallbackProperties> HandleReopenAsync(
         IWorldClient world, ButtonInteractionContext c, string ticketId)
     {
@@ -284,8 +266,6 @@ public static class ItTicketCommands
         new ButtonProperties($"itreport:{ticketId}", "Report", ButtonStyle.Secondary),
     };
 
-    // Full card for updates — status line on top, all ticket data below.
-    // Rendered purely from the plain TicketView the world sent.
     public static string Card(in TicketView t, string status, bool liveTimer)
     {
         var header = $"**IT ticket `{t.TicketId}`** — {status}";
@@ -330,7 +310,6 @@ public static class ItTicketCommands
         _ => TicketPriority.Urgent,
     };
 
-    // Default ticket assignee — Discord user snowflake via Discord__ItUser env
     private static ulong? ItUserFromEnvironment() =>
         ulong.TryParse(Environment.GetEnvironmentVariable("Discord__ItUser"), out var u) ? u : null;
 }
