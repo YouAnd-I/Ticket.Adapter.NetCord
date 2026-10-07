@@ -10,7 +10,7 @@ using Ticket.Data;
 
 namespace Ticket.Adapter.NetCord;
 
-public static class ItTicketCommands
+public static partial class ItTicketCommands
 {
     public enum PriorityOption
     {
@@ -156,11 +156,17 @@ public static class ItTicketCommands
                 });
         }
 
-        if (assignee is not null && assignee != requester.Id)
+        var recipients = new List<ulong>();
+        if (assigneeId is { } chosen) recipients.Add(chosen);
+        else recipients.AddRange(MentionedUsers(ticket.View.Assignee));
+        if (recipients.Count == 0 && ItUserFromEnvironment() is { } fallback)
+            recipients.Add(fallback);
+
+        foreach (var staff in recipients.Where(id => id != requester.Id).Distinct())
         {
             try
             {
-                var it = await rest.GetUserAsync(assignee.Value);
+                var it = await rest.GetUserAsync(staff);
                 var itDm = await it.GetDMChannelAsync();
                 await rest.SendMessageAsync(itDm.Id, new MessageProperties
                 {
@@ -312,4 +318,14 @@ public static class ItTicketCommands
 
     private static ulong? ItUserFromEnvironment() =>
         ulong.TryParse(Environment.GetEnvironmentVariable("Discord__ItUser"), out var u) ? u : null;
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<@(\d+)>")]
+    private static partial System.Text.RegularExpressions.Regex MentionRegex();
+
+    private static IEnumerable<ulong> MentionedUsers(string? mentions)
+    {
+        if (mentions is null) yield break;
+        foreach (System.Text.RegularExpressions.Match match in MentionRegex().Matches(mentions))
+            yield return ulong.Parse(match.Groups[1].Value);
+    }
 }
