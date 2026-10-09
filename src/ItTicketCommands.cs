@@ -17,7 +17,6 @@ public static partial class ItTicketCommands
         [SlashCommandChoice(Name = "auto")] Auto,
         [SlashCommandChoice(Name = "urgent")] Urgent,
         [SlashCommandChoice(Name = "no-rush")] NoRush,
-        [SlashCommandChoice(Name = "report")] Report,
     }
 
     public static void AddItTickets(this IHost host, IWorldClient world)
@@ -90,7 +89,6 @@ public static partial class ItTicketCommands
                     new StringMenuSelectOptionProperties("Auto (let the model decide)", "auto") { Default = true },
                     new StringMenuSelectOptionProperties("Urgent", "urgent"),
                     new StringMenuSelectOptionProperties("No rush", "no-rush"),
-                    new StringMenuSelectOptionProperties("Report", "report"),
                 ]) { Required = false }),
                 new LabelProperties("Attachment", new FileUploadProperties("file") { Required = false, MaxValues = 1 }),
             }));
@@ -108,7 +106,6 @@ public static partial class ItTicketCommands
         {
             "urgent" => TicketPriority.Urgent,
             "no-rush" => TicketPriority.NoRush,
-            "report" => TicketPriority.Report,
             _ => TicketPriority.Auto,
         };
         _ = Task.Run(() => CreateAsync(world, c.User, c.Client.Rest, c.Interaction,
@@ -312,7 +309,6 @@ public static partial class ItTicketCommands
     {
         PriorityOption.Auto => TicketPriority.Auto,
         PriorityOption.NoRush => TicketPriority.NoRush,
-        PriorityOption.Report => TicketPriority.Report,
         _ => TicketPriority.Urgent,
     };
 
