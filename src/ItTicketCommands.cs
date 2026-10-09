@@ -144,8 +144,9 @@ public static partial class ItTicketCommands
                     Flags = MessageFlags.Ephemeral,
                 });
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[it] DM to requester failed, card sent in channel instead: {ex.GetType().Name}: {ex.Message}");
             await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
                 new InteractionMessageProperties
                 {
