@@ -132,26 +132,45 @@ public static partial class ItTicketCommands
 
         var content = Card(ticket.View, "created", liveTimer: true);
         var buttons = FullRow(ticket.View.TicketId);
-        try
+        var media = await DownloadAsync(ticket.View.AttachmentUrl).ConfigureAwait(false);
+
+        if (interaction.GuildId is null)
         {
-            var dm = await requester.GetDMChannelAsync();
-            await rest.SendMessageAsync(dm.Id,
-                new MessageProperties { Content = content, Components = [buttons] });
+            // /it ran in a DM with the bot: the card stays in this conversation
+            // as a normal message — survives a refresh, still only the user sees it.
             await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
                 new InteractionMessageProperties
                 {
-                    Content = $"**IT ticket `{ticket.View.TicketId}` created** — sent to your DMs 📬",
-                    Flags = MessageFlags.Ephemeral,
+                    Content = content, Components = [buttons], Attachments = Attachments(media),
                 });
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"[it] DM to requester failed, card sent in channel instead: {ex.GetType().Name}: {ex.Message}");
-            await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
-                new InteractionMessageProperties
-                {
-                    Content = content, Flags = MessageFlags.Ephemeral, Components = [buttons],
-                });
+            try
+            {
+                var dm = await requester.GetDMChannelAsync();
+                await rest.SendMessageAsync(dm.Id,
+                    new MessageProperties
+                    {
+                        Content = content, Components = [buttons], Attachments = Attachments(media),
+                    });
+                await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
+                    new InteractionMessageProperties
+                    {
+                        Content = $"**IT ticket `{ticket.View.TicketId}` created** — sent to your DMs 📬",
+                        Flags = MessageFlags.Ephemeral,
+                    });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[it] DM to requester failed, card sent in channel instead: {ex.GetType().Name}: {ex.Message}");
+                await rest.SendInteractionFollowupMessageAsync(interaction.ApplicationId, interaction.Token,
+                    new InteractionMessageProperties
+                    {
+                        Content = content, Flags = MessageFlags.Ephemeral, Components = [buttons],
+                        Attachments = Attachments(media),
+                    });
+            }
         }
 
         var recipients = new List<ulong>();
@@ -170,6 +189,7 @@ public static partial class ItTicketCommands
                 {
                     Content = $"**Ticket `{ticket.View.TicketId}` assigned to you** — from {requester}\n" + content,
                     Components = [buttons],
+                    Attachments = Attachments(media),
                 });
             }
             catch (Exception ex)
@@ -178,6 +198,29 @@ public static partial class ItTicketCommands
             }
         }
     }
+
+    // Discord's CDN links for uploaded files are signed and expire; the file
+    // re-attached by the bot is the bot's own attachment and outlives the link.
+    private static async Task<(string Name, byte[] Bytes)?> DownloadAsync(string? url)
+    {
+        if (url is null) return null;
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var bytes = await http.GetByteArrayAsync(url).ConfigureAwait(false);
+            var name = url.Split('?')[0].Split('/').LastOrDefault() is { Length: > 0 } n ? n : "attachment";
+            return (name, bytes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[it] could not re-attach {url}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    // One fresh stream per message: a stream can only be uploaded once.
+    private static List<AttachmentProperties>? Attachments((string Name, byte[] Bytes)? media) =>
+        media is { } m ? [new AttachmentProperties(m.Name, new MemoryStream(m.Bytes))] : null;
 
     public static async Task<InteractionCallbackProperties> HandleStatusAsync(
         IWorldClient world, ButtonInteractionContext c, string status, string ticketId)
